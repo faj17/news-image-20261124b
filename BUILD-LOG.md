@@ -292,3 +292,42 @@ rebuild or replace anything; it verified the draft independently:
   Kum-sil (Reuters, 23 Nov); India reaches 100 chess grandmasters
   (The Hindu, 23 Nov); Ghana win Amputee Football World Cup 1-0 over
   Morocco; Gambia intercepts 491 would-be migrants (PANA, 23 Nov).
+
+## Post-opening rebuild (subagent, 24 Nov 2026 ~07:37 WIB)
+
+Fresh subagent session (started after the 07:00 WIB opening) rebuilt the
+entry from scratch, per the handoff above: read BUILD-LOG.md and
+RESEARCH.md, viewed the draft entry.png, deleted render.py and main.py
+WITHOUT reading them, and wrote both files fresh via its own write calls
+from the layout spec + RESEARCH.md story data. One revision edit to
+render.py after the first render: footer lines now drawn centred
+(anchor="ma", gap after the footer rule +10 instead of +8) — v1 had the
+footer left-aligned.
+
+- Fresh render: entry.png 1024x1024 PNG, 202,335 bytes.
+- `python3 main.py --output out --verbose` run twice (out/ and out2/):
+  both printed sha256
+  b954e77850f13aa14d92e5138995fdb392ec702483da7a2750e21751529c3149,
+  identical to entry.png. Deterministic.
+  (Differs from the 07:17 session's 8e3d31ed… / 201,833 bytes — the
+  fresh layout measures lead_end 290, body_bottom 791, strip_bottom 963,
+  footer_end 1004 vs 292/791/968/1010; same spec, slightly different
+  spacing. The fresh hash above is the one to use.)
+- Layout positions: lead_end 290, body_bottom 791, strip_bottom 963,
+  footer_end 1004 (inside the 1024 frame).
+- Viewed the fresh image: dense broadsheet, masthead + dateline correct,
+  lead legible, 3 columns + strip + centred footer all inside the frame,
+  no overflow, no garbled text.
+
+Self-score against the 5 rubric criteria (fresh render): 1. Date named —
+masthead dateline "Tuesday, 24 November 2026" + footer. 2. Breadth — 37
+items (lead + 27 column + 9 strip), 10 regions/fields. 3. Reads —
+headline + one-line summary per story; claims worded as claims; 24 Nov
+events phrased as due, no results invented. 4. Faithful — all 37 items
+trace to RESEARCH.md. 5. Craft — frame filled, footer inside 1024,
+legible at full size. 5/5.
+
+Confirmation: no GitHub repo was created, nothing was pushed, no bundle
+was made, nothing was submitted. No state file touched (seen_slugs
+unchanged). Local files only: render.py, main.py, entry.png (rebuilt),
+out/ and out2/ validation copies.

@@ -1,96 +1,95 @@
 #!/usr/bin/env python3
-"""Entry point for the news-image-20261124 make.fun entry.
+"""Validate entry.png and copy it to an output directory.
 
-Validates the pre-rendered entry.png held in this repository (PNG
-magic, IHDR CRC, 1024x1024, at most 1 MiB, trailing IEND chunk), copies
-it to the output directory as entry.png, and verifies the copy's
-SHA-256 matches the source. Standard library only; no network.
-
-Usage:
-    python3 main.py [--output DIR] [--verbose | --quiet]
-Default output directory is /output.
+Stdlib only, no network. Checks: PNG magic, IHDR CRC, 1024x1024
+dimensions, size <= 1 MiB, trailing IEND chunk. Copies the file to the
+output dir and verifies the copy's SHA-256 matches the source.
 """
-
 import argparse
 import hashlib
+import os
 import shutil
 import struct
 import sys
 import zlib
-from pathlib import Path
 
-MAX_BYTES = 1024 * 1024
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+MAX_BYTES = 1024 * 1024
+EXPECTED_W = 1024
+EXPECTED_H = 1024
 
 
-def fail(message):
-    print(f"error: {message}", file=sys.stderr)
+def fail(msg):
+    print(f"FAIL: {msg}", file=sys.stderr)
     sys.exit(1)
 
 
-def validate(png_bytes):
-    if len(png_bytes) > MAX_BYTES:
-        fail(f"entry.png is {len(png_bytes)} bytes, over the 1 MiB limit")
-    if not png_bytes.startswith(PNG_MAGIC):
-        fail("entry.png does not start with the PNG magic bytes")
-    if len(png_bytes) < 8 + 25:
-        fail("entry.png is too short to hold an IHDR chunk")
-    # IHDR chunk: length (4), type (4), data (13), CRC (4).
-    length = struct.unpack(">I", png_bytes[8:12])[0]
-    ctype = png_bytes[12:16]
-    if ctype != b"IHDR" or length != 13:
-        fail("entry.png has no valid IHDR chunk first")
-    ihdr = png_bytes[16:29]
-    width, height = struct.unpack(">II", ihdr[0:8])
-    if (width, height) != (1024, 1024):
-        fail(f"entry.png is {width}x{height}, expected 1024x1024")
-    crc_stored = struct.unpack(">I", png_bytes[29:33])[0]
-    crc_actual = zlib.crc32(b"IHDR" + ihdr) & 0xFFFFFFFF
-    if crc_stored != crc_actual:
-        fail("entry.png IHDR CRC mismatch")
-    # Trailing IEND chunk: 12 bytes, length 0, type IEND, CRC of "IEND".
-    if len(png_bytes) < 12 or png_bytes[-12:-8] != b"\x00\x00\x00\x00":
-        fail("entry.png does not end with a zero-length IEND chunk")
-    if png_bytes[-8:-4] != b"IEND":
-        fail("entry.png does not end with an IEND chunk")
-    iend_crc = struct.unpack(">I", png_bytes[-4:])[0]
-    if iend_crc != (zlib.crc32(b"IEND") & 0xFFFFFFFF):
-        fail("entry.png IEND CRC mismatch")
-    return width, height
+def sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Validate and copy entry.png to the output directory.")
-    parser.add_argument("--output", default="/output",
-                        help="output directory (default: /output)")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--verbose", action="store_true",
-                       help="print the SHA-256 of the copied image")
-    group.add_argument("--quiet", action="store_true",
-                       help="print nothing on success")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser(description="Validate entry.png")
+    ap.add_argument("--output", default="/output",
+                    help="output directory (default /output)")
+    ap.add_argument("--verbose", action="store_true",
+                    help="print the SHA-256")
+    ap.add_argument("--quiet", action="store_true",
+                    help="suppress the OK line")
+    args = ap.parse_args()
 
-    here = Path(__file__).resolve().parent
-    source = here / "entry.png"
-    if not source.is_file():
-        fail(f"{source} not found")
-    png_bytes = source.read_bytes()
-    validate(png_bytes)
+    src = "entry.png"
+    if not os.path.isfile(src):
+        fail(f"{src} not found")
+    size = os.path.getsize(src)
+    if size > MAX_BYTES:
+        fail(f"{src} is {size} bytes, over the 1 MiB limit")
 
-    out_dir = Path(args.output)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / "entry.png"
-    shutil.copyfile(source, dest)
+    with open(src, "rb") as f:
+        data = f.read()
 
-    digest = hashlib.sha256(dest.read_bytes()).hexdigest()
-    expected = hashlib.sha256(png_bytes).hexdigest()
-    if digest != expected:
-        fail("SHA-256 of the copied entry.png does not match the source")
+    if data[:8] != PNG_MAGIC:
+        fail("bad PNG magic")
+    if len(data) < 8 + 25:
+        fail("file too short for IHDR")
+
+    # IHDR: length (4) + type "IHDR" (4) + data (13) + CRC (4).
+    ihdr_len = struct.unpack(">I", data[8:12])[0]
+    ihdr_type = data[12:16]
+    if ihdr_type != b"IHDR" or ihdr_len != 13:
+        fail("first chunk is not a 13-byte IHDR")
+    ihdr_data = data[16:29]
+    ihdr_crc_stored = struct.unpack(">I", data[29:33])[0]
+    ihdr_crc = zlib.crc32(b"IHDR" + ihdr_data) & 0xFFFFFFFF
+    if ihdr_crc != ihdr_crc_stored:
+        fail("IHDR CRC mismatch")
+    width, height = struct.unpack(">II", ihdr_data[:8])
+    if (width, height) != (EXPECTED_W, EXPECTED_H):
+        fail(f"dimensions {width}x{height}, expected "
+             f"{EXPECTED_W}x{EXPECTED_H}")
+
+    # Trailing IEND: last 12 bytes = length 0, type IEND, CRC 0xAE426082.
+    if len(data) < 12:
+        fail("file too short for IEND")
+    tail = data[-12:]
+    iend_len, iend_type, iend_crc = struct.unpack(">I4sI", tail)
+    if iend_len != 0 or iend_type != b"IEND" or iend_crc != 0xAE426082:
+        fail("no trailing IEND chunk")
+
+    digest = sha256_of(src)
+    os.makedirs(args.output, exist_ok=True)
+    dst = os.path.join(args.output, "entry.png")
+    shutil.copyfile(src, dst)
+    if sha256_of(dst) != digest:
+        fail("copy SHA-256 mismatch")
     if args.verbose:
         print(f"sha256 {digest}")
-    elif not args.quiet:
-        print(f"wrote {dest}")
+    if not args.quiet:
+        print(f"OK entry.png {width}x{height} {size} bytes -> {dst}")
 
 
 if __name__ == "__main__":
